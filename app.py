@@ -75,8 +75,14 @@ def dates_overlap(start_a, end_a, start_b, end_b):
     if end_a < start_b or end_b < start_a:
         return False
 
-    # A boundary-day touch (for example, one booking ends on the day another
-    # starts) is allowed as same-day turnover and is not a conflict.
+    # Two single-day bookings landing on the exact same date always conflict —
+    # there's no real handoff, both are claiming the same day outright.
+    if start_a == end_a and start_b == end_b and start_a == start_b:
+        return True
+
+    # A boundary-day touch (same-day turnover) is allowed only when it
+    # represents a genuine handoff, not two bookings both anchored on
+    # that single date.
     if end_a == start_b or end_b == start_a:
         return False
 

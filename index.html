@@ -14,6 +14,10 @@
     .message { margin-top: 16px; padding: 10px; border-radius: 6px; }
     .ok { background: #e6f4ea; color: #1e7e34; }
     .err { background: #fdecea; color: #c0392b; }
+    .booking-panel { margin-top: 16px; padding: 12px; border: 1px solid #d9d9d9; border-radius: 8px; background: #fafafa; }
+    .booking-panel ul { padding-left: 20px; margin: 8px 0 0; }
+    .booking-panel li { margin-bottom: 8px; }
+    .muted { color: #666; font-size: 0.95rem; }
   </style>
 </head>
 <body>
@@ -35,10 +39,17 @@
 
   <button id="book">Create booking</button>
 
+  <div class="booking-panel">
+    <strong>Existing bookings</strong>
+    <p id="bookingStatus" class="muted">Select an equipment item to see confirmed bookings.</p>
+    <ul id="bookingList"></ul>
+  </div>
+
   <div id="message"></div>
 
   <script>
     let equipmentList = [];
+    let bookings = [];
 
     async function loadEquipment() {
       const res = await fetch("/api/equipment");
@@ -58,10 +69,72 @@
       return equipmentList.find(e => e.id === id);
     }
 
+    async function loadBookings() {
+      const res = await fetch("/api/bookings");
+      const allBookings = await res.json();
+      bookings = allBookings.filter(booking => booking.status !== "cancelled");
+      renderBookings();
+    }
+
+    function parseDate(value) {
+      const [year, month, day] = value.split("-").map(Number);
+      return new Date(year, month - 1, day);
+    }
+
+    function formatDate(value) {
+      const date = parseDate(value);
+      return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+    }
+
+    function addDays(value, delta) {
+      const date = parseDate(value);
+      date.setDate(date.getDate() + delta);
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const day = String(date.getDate()).padStart(2, "0");
+      return `${year}-${month}-${day}`;
+    }
+
     function dayCount(from, to) {
       // Rentals are billed inclusively: both start and end day count.
       const ms = new Date(to) - new Date(from);
       return Math.round(ms / (1000 * 60 * 60 * 24)) + 1;
+    }
+
+    function renderBookings() {
+      const equipment = selectedEquipment();
+      const statusEl = document.getElementById("bookingStatus");
+      const listEl = document.getElementById("bookingList");
+
+      if (!equipment) {
+        statusEl.textContent = "Select an equipment item to see confirmed bookings.";
+        listEl.innerHTML = "";
+        return;
+      }
+
+      const equipmentBookings = bookings
+        .filter(booking => booking.equipment_id === equipment.id)
+        .sort((a, b) => a.from_date.localeCompare(b.from_date));
+
+      if (equipmentBookings.length === 0) {
+        statusEl.textContent = `No confirmed bookings for ${equipment.name}.`;
+        listEl.innerHTML = "";
+        return;
+      }
+
+      statusEl.textContent = `Confirmed bookings for ${equipment.name}:`;
+      listEl.innerHTML = "";
+
+      equipmentBookings.forEach(booking => {
+        const li = document.createElement("li");
+        if (booking.from_date === booking.to_date) {
+          li.innerHTML = `<strong>${formatDate(booking.from_date)}</strong><br />${formatDate(booking.from_date)} — fully booked and also a same-day turnover boundary.`;
+        } else {
+          const previousDay = addDays(booking.to_date, -1);
+          li.innerHTML = `<strong>${formatDate(booking.from_date)} to ${formatDate(booking.to_date)}</strong><br />${formatDate(booking.from_date)} to ${formatDate(previousDay)} — fully unavailable; ${formatDate(booking.to_date)} — same-day turnover boundary (a new booking may start here).`;
+        }
+        listEl.appendChild(li);
+      });
     }
 
     function updateTotal() {
@@ -105,17 +178,28 @@
       if (res.ok) {
         messageEl.className = "message ok";
         messageEl.textContent = `Booked! Total PHP ${data.total.toFixed(2)}.`;
+        await loadBookings();
       } else {
         messageEl.className = "message err";
         messageEl.textContent = data.error;
       }
     }
 
-    document.getElementById("equipment").addEventListener("change", updateTotal);
+    document.getElementById("equipment").addEventListener("change", () => {
+      updateTotal();
+      renderBookings();
+    });
     document.getElementById("from").addEventListener("change", updateTotal);
+    document.getElementById("to").addEventListener("change", updateTotal);
     document.getElementById("book").addEventListener("click", createBooking);
 
-    loadEquipment();
+    async function init() {
+      await loadEquipment();
+      await loadBookings();
+      updateTotal();
+    }
+
+    init();
   </script>
 </body>
 </html>
