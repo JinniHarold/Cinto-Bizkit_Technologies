@@ -65,38 +65,49 @@ def parse_date(value):
 
 
 def rental_days(from_date, to_date):
-    """Number of days this rental covers (see business rules above).
-
-    TODO (Task 1): implement.
-    """
-    raise NotImplementedError
+    """Number of days this rental covers (see business rules above)."""
+    return (to_date - from_date).days + 1
 
 
 def dates_overlap(start_a, end_a, start_b, end_b):
     """True if date range A conflicts with date range B (see the
-    same-day-turnover rule above).
+    same-day-turnover rule above)."""
+    if end_a < start_b or end_b < start_a:
+        return False
 
-    TODO (Task 1): implement.
-    """
-    raise NotImplementedError
+    # A boundary-day touch (for example, one booking ends on the day another
+    # starts) is allowed as same-day turnover and is not a conflict.
+    if end_a == start_b or end_b == start_a:
+        return False
+
+    return True
 
 
 def find_conflicting_booking(equipment_id, from_date, to_date, bookings):
     """Return an existing, non-cancelled booking for this equipment that
-    conflicts with the given dates, or None.
-
-    TODO (Task 1): implement.
-    """
-    raise NotImplementedError
+    conflicts with the given dates, or None."""
+    for booking in bookings:
+        if booking.get("status") == "cancelled":
+            continue
+        if booking.get("equipment_id") != equipment_id:
+            continue
+        if dates_overlap(
+            parse_date(booking["from_date"]),
+            parse_date(booking["to_date"]),
+            from_date,
+            to_date,
+        ):
+            return booking
+    return None
 
 
 def calculate_total(daily_rate, days):
     """Total price for a rental of this many days (see the long-rental
-    discount rule above).
-
-    TODO (Task 2): implement.
-    """
-    raise NotImplementedError
+    discount rule above)."""
+    total = daily_rate * days
+    if days >= 7:
+        return total * 0.9
+    return total
 
 
 # ---------------------------------------------------------------------------
@@ -126,6 +137,8 @@ def availability():
 
     available = []
     for item in EQUIPMENT:
+        if item.get("status") == "maintenance":
+            continue
         conflict = find_conflicting_booking(item["id"], from_date, to_date, bookings)
         if conflict is None:
             available.append(item)
@@ -139,6 +152,8 @@ def create_booking():
     equipment = get_equipment(data.get("equipment_id"))
     if equipment is None:
         return jsonify({"error": "Unknown equipment"}), 400
+    if equipment.get("status") == "maintenance":
+        return jsonify({"error": f"{equipment['name']} is under maintenance and cannot be booked"}), 400
 
     from_date = parse_date(data["from_date"])
     to_date = parse_date(data["to_date"])
